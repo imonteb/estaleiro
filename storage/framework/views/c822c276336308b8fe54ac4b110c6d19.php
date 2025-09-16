@@ -1,0 +1,2 @@
+<img src="<?php echo e(asset('storage\images\nav\imblogo_nav.png')); ?>" class="h-14 " alt="Estaleiro Logo" />
+<?php /**PATH C:\laragon\www\estaleiro\resources\views/components/application-logo.blade.php ENDPATH**/ ?>
