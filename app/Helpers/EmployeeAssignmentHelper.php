@@ -12,10 +12,16 @@ class EmployeeAssignmentHelper
 {
 
     /**
-     * Retorna la etiqueta completa para usar en selects.
+     * Retorna a etiqueta completa para usar em selects.
      */
-    public static function getLabelParaSelect($employeeId, $date, $excludeTeamId = null, $excludeMemberId = null): string
-    {
+    public static function getLabelParaSelect(
+        $employeeId,
+        $date,
+        $excludeTeamId = null,
+        $excludeMemberId = null
+    ): string {
+
+
         $date = $date instanceof Carbon ? $date->toDateString() : Carbon::parse($date)->toDateString();
         $employee = $employeeId instanceof Employee ? $employeeId : Employee::with('user')->find($employeeId);
         if (!$employee) {
@@ -23,37 +29,38 @@ class EmployeeAssignmentHelper
         }
 
         $nome = $employee->employee_number . ' - ' . ($employee->user->name ?? '') . ' ' . ($employee->last_name ?? '');
-    $status = self::getDetailedStatusForDate($employee, $date, $excludeTeamId, $excludeMemberId);
+        $status = self::getDetailedStatusForDate($employee, $date, $excludeTeamId, $excludeMemberId);
 
         if ($status['status'] === 'ausente') {
-            $label = $status['motivo'] ?: 'Ausente';
-            $emoji = '🚫';
+            $label = $status['reason'] ?: 'Ausente';
+            $emoji = '❌';
             $result = "$emoji $nome (Ausente: $label)";
         } elseif ($status['status'] === 'asignado') {
-            $rol = $status['rol'] ?? '';
-            $nomeGrupo = $status['equipo'] ?? '';
-            $label = "Designado como $rol no $nomeGrupo";
-            $emoji = '🔴';
+            $role = $status['role'] ?? '';
+            $teamName = $status['team_name'] ?? '';
+            $label = "Designado como $role no $teamName";
+            $emoji = '🔒';
             $result = "$emoji $nome ($label)";
         } elseif ($status['status'] === 'same_team') {
-            $rol = $status['rol'] ?? '';
-            $nomeGrupo = $status['equipo'] ?? '';
-            $label = "Já está neste equipo ($rol";
-            if ($nomeGrupo) {
-                $label .= " no $nomeGrupo";
+            $role = $status['role'] ?? '';
+            $teamName = $status['team_name'] ?? '';
+            $label = "Já está nesta equipa ($role";
+            if ($teamName) {
+                $label .= " no $teamName";
             }
             $label .= ")";
-            $emoji = '🟡';
+            $emoji = '✔️';
             $result = "$emoji $nome ($label)";
         } else {
-            $emoji = '🟢';
+            $emoji = '✅';
             $result = "$emoji $nome (Disponível)";
         }
+
         return $result;
     }
 
     /**
-     * Retorna un status detallado de un empleado en la fecha dada.
+     * Retorna um estado detalhado de um colaborador na data fornecida.
      */
     public static function getDetailedStatusForDate($employee, $date, $excludeTeamId = null, $excludeMemberId = null): array
     {
@@ -64,9 +71,9 @@ class EmployeeAssignmentHelper
         if (!$employee) {
             $result = [
                 'status' => 'ausente',
-                'motivo' => 'Colaborador não encontrado',
-                'equipo' => null,
-                'rol'    => null,
+                'reason' => 'Colaborador não encontrado',
+                'team_name' => null,
+                'role'    => null,
             ];
             return $result;
         }
@@ -77,9 +84,9 @@ class EmployeeAssignmentHelper
             $motivo = $absence->statusType->name ?? $absence->motivo ?? $absence->type ?? 'Ausente';
             return [
                 'status' => 'ausente',
-                'motivo' => $motivo,
-                'equipo' => null,
-                'rol'    => null,
+                'reason' => $motivo,
+                'team_name' => null,
+                'role'    => null,
             ];
         }
 
@@ -91,9 +98,9 @@ class EmployeeAssignmentHelper
         if (!$employee || !($employee instanceof \App\Models\Employee)) {
             $result = [
                 'status' => 'ausente',
-                'motivo' => 'Colaborador não encontrado',
-                'equipo' => null,
-                'rol'    => null,
+                'reason' => 'Colaborador não encontrado',
+                'team_name' => null,
+                'role'    => null,
             ];
             return $result;
         }
@@ -105,7 +112,7 @@ class EmployeeAssignmentHelper
             $isSameTeam = false;
             if ($excludeTeamId && (isset($asignacion['team_id']) || isset($asignacion['daily_team_id']))) {
                 // Si es líder o miembro de subgrupo, comparar el daily_team_id del subgrupo
-                if ((strpos($asignacion['rol'], 'subgrupo') !== false) && isset($asignacion['daily_team_id'])) {
+                if ((strpos($asignacion['role'], 'subgrupo') !== false) && isset($asignacion['daily_team_id'])) {
                     if ($asignacion['daily_team_id'] == $excludeTeamId) {
                         $isSameTeam = true;
                     }
@@ -116,9 +123,9 @@ class EmployeeAssignmentHelper
             if ($isSameTeam) {
                 return [
                     'status'    => 'same_team',
-                    'motivo'    => null,
-                    'equipo'    => $asignacion['equipo'],
-                    'rol'       => $asignacion['rol'],
+                    'reason'    => null,
+                    'team_name' => $asignacion['team_name'],
+                    'role'       => $asignacion['role'],
                     'member_id' => $asignacion['member_id'] ?? null,
                     'date'      => $date,
                 ];
@@ -126,9 +133,9 @@ class EmployeeAssignmentHelper
 
             $result = [
                 'status'    => 'asignado',
-                'motivo'    => null,
-                'equipo'    => $asignacion['equipo'],
-                'rol'       => $asignacion['rol'],
+                'reason'    => null,
+                'team_name' => $asignacion['team_name'],
+                'role'       => $asignacion['role'],
                 'member_id' => $asignacion['member_id'] ?? null,
                 'date'      => $date,
             ];
@@ -138,16 +145,16 @@ class EmployeeAssignmentHelper
 
         $result = [
             'status' => null,
-            'motivo' => null,
-            'equipo' => null,
-            'rol'    => null,
+            'reason' => null,
+            'team_name' => null,
+            'role'    => null,
         ];
 
         return $result;
     }
 
     /**
-     * Verifica si un empleado está ausente en una fecha.
+     * Verifica se um colaborador está ausente numa determinada data.
      */
     public static function isAbsentOn($employee, $date)
     {
@@ -174,41 +181,44 @@ class EmployeeAssignmentHelper
     }
 
     /**
-     * Busca si el empleado ya está asignado a un equipo o plantilla en la fecha.
+     * Procura se o colaborador já está atribuído a uma equipa ou modelo na data.
      */
     public static function buscarAsignacion($employeeId, $date, $excludeTeamId = null, $excludeMemberId = null)
     {
-        // Verificar si es líder en algún equipo/plantilla en la fecha
-        $liderSubEquipo = \App\Models\SubTeam::with('dailyTeam.teamname')
-            ->where('leader_id', $employeeId)
-            ->whereHas('dailyTeam', function ($q) use ($date) {
-                $q->whereDate('work_date', $date);
-            })
-            ->first();
-        if ($liderSubEquipo) {
-            $nomeGrupo = $liderSubEquipo->dailyTeam->teamname?->name ?? $liderSubEquipo->name ?? 'Subequipe';
-            return [
-                'equipo'        => $nomeGrupo,
-                'rol'           => 'Líder de subgrupo',
-                'member_id'     => null,
-                'team_id'       => $liderSubEquipo->id,
-                'daily_team_id' => $liderSubEquipo->daily_team_id,
-            ];
-        }
-
+        // 1. Buscar como líder de un equipo principal
         $liderEquipo = \App\Models\DailyTeam::with('teamname')
             ->where('leader_id', $employeeId)
             ->whereDate('work_date', $date)
             ->first();
         if ($liderEquipo) {
             return [
-                'equipo'    => $liderEquipo->teamname?->name ?? $liderEquipo->name ?? 'Equipe',
-                'rol'       => 'Líder',
+                'team_name' => $liderEquipo->teamname?->name ?? $liderEquipo->name ?? 'Equipa',
+                'role'       => 'Líder',
                 'member_id' => null,
                 'team_id'   => $liderEquipo->id,
             ];
         }
 
+        // 2. Buscar como líder de un sub-equipo
+        $liderSubEquipo = \App\Models\SubTeam::with(['subTeamName', 'dailyTeam.teamname'])
+            ->where('leader_id', $employeeId)
+            ->whereHas('dailyTeam', function ($q) use ($date) {
+                $q->whereDate('work_date', $date);
+            })
+            ->first();
+        if ($liderSubEquipo) {
+            $teamName = $liderSubEquipo->subTeamName?->name ?? 'Sub-equipa';
+            $mainTeamName = $liderSubEquipo->dailyTeam->teamname?->name;
+            return [
+                'team_name'     => $mainTeamName ? "$teamName (Equipa: $mainTeamName)" : $teamName,
+                'role'           => 'Líder de subgrupo',
+                'member_id'     => null,
+                'team_id'       => $liderSubEquipo->id,
+                'daily_team_id' => $liderSubEquipo->daily_team_id,
+            ];
+        }
+
+        // 3. Buscar como miembro de un equipo principal
         $query = DailyTeamMember::where('employee_id', $employeeId)
             ->whereHas('dailyTeam', function ($q) use ($date) {
                 $q->whereDate('work_date', $date);
@@ -217,13 +227,14 @@ class EmployeeAssignmentHelper
         $member = $query->with('dailyTeam.teamname')->first();
         if ($member) {
             return [
-                'equipo'    => $member->dailyTeam->teamname?->name ?? $member->dailyTeam->name ?? 'Equipe',
-                'rol'       => $member->role ?? 'Membro',
+                'team_name' => $member->dailyTeam->teamname?->name ?? 'Equipa',
+                'role'       => 'Membro',
                 'member_id' => $member->id,
                 'team_id'   => $member->daily_team_id,
             ];
         }
 
+        // 4. Buscar como miembro de un sub-equipo
         $subQuery = SubTeamMember::where('employee_id', $employeeId)
             ->whereHas('subTeam', function ($q) use ($date) {
                 $q->whereHas('dailyTeam', function ($q2) use ($date) {
@@ -233,10 +244,11 @@ class EmployeeAssignmentHelper
 
         $subMember = $subQuery->with('subTeam')->first();
         if ($subMember) {
-            $nomeGrupo = $subMember->subTeam->dailyTeam->teamname?->name ?? $subMember->subTeam->name ?? 'Subequipe';
+            $teamName = $subMember->subTeam->subTeamName?->name ?? 'Sub-equipa';
+            $mainTeamName = $subMember->subTeam->dailyTeam->teamname?->name;
             return [
-                'equipo'        => $nomeGrupo,
-                'rol'           => $subMember->role ?? 'Membro de subgrupo',
+                'team_name'     => $mainTeamName ? "$teamName (Equipa: $mainTeamName)" : $teamName,
+                'role'           => 'Membro de subgrupo',
                 'member_id'     => $subMember->id,
                 'team_id'       => $subMember->subTeam->id ?? null,
                 'daily_team_id' => $subMember->subTeam->daily_team_id ?? null,

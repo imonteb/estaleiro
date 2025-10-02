@@ -9,8 +9,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Validation\ValidationException;
 
-
-
 class SubTeamMember extends Model
 {
     use HasFactory;
@@ -53,19 +51,24 @@ class SubTeamMember extends Model
                     'employee_id' => 'Este colaborador não está disponível nessa data (' . $motivo . ').',
                 ]);
             }
-            // Si está asignado, permitir si es el mismo subequipo (update)
+
+            // Si está asignado, permitir si es el mismo miembro que se está editando
             if ($badge['status'] === 'asignado') {
-                if ($item->sub_team_id && isset($badge['equipo']) && isset($badge['rol'])) {
+                if ($item->exists && isset($badge['member_id']) && $badge['member_id'] == $item->id) {
+                    return;
+                }
+
+                if ($item->sub_team_id && isset($badge['equipo']) && isset($badge['role'])) {
                     $subequipo = $item->subTeam;
                     if ($subequipo && $subequipo->id == $item->sub_team_id) {
                         return;
                     }
                 }
+
                 throw ValidationException::withMessages([
                     'employee_id' => 'Este colaborador já está atribuído a outro grupo nessa data.',
                 ]);
             }
         });
     }
-
 }

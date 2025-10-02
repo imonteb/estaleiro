@@ -35,14 +35,14 @@
                                                     @if (Route::has('login'))
                                                     <div class="">
                                                         @auth
-                                                        <a href="{{ url('/dashboard') }}"
+                                                        <a href="{{ url('/admin') }}"
                                                             class="font-semibold text-gray-100 hover:text-amber-500
                                                              dark:text-gray-400 dark:hover:text-amber-500 focus:outline
                                                             focus:outline-2 focus:rounded-sm focus:outline-red-500 text-sm">
                                                             Painel
                                                         </a>
                                                         @else
-                                                        <a href="{{ route('login') }}"
+                                                        <a href="{{ route('filament.admin.auth.login') }}"
                                                             class="font-semibold text-gray-100 hover:text-amber-500
                                                              dark:text-gray-400 dark:hover:text-amber-500 focus:outline
                                                              focus:outline-2 focus:rounded-sm focus:outline-red-500 text-sm">

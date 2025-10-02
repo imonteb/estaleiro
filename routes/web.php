@@ -134,4 +134,4 @@ Route::view('profile', 'profile')
 Route::get('/equipos-diarios', \App\Livewire\DailyTeams\DailyTeamsIndex::class)->name('daily-teams.index');
  */
 // Auth routes
-require __DIR__ . '/auth.php';
+//require __DIR__ . '/auth.php';

@@ -479,6 +479,7 @@ public function importLastWorkDay($targetDate = null)
                             }
                         }
                     }
+                }
                 session()->flash('success', 'Equipa diária atualizada com sucesso!');
             }
         } else {
@@ -636,6 +637,4 @@ public function importLastWorkDay($targetDate = null)
         ]);
     }
 }
-
-
-
+          

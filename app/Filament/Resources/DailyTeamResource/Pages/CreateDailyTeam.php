@@ -6,16 +6,22 @@ use App\Filament\Resources\DailyTeamResource;
 use BezhanSalleh\FilamentShield\Traits\HasPageShield;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class CreateDailyTeam extends CreateRecord
 {
-    
+
     protected static string $resource = DailyTeamResource::class;
     protected static ?string $title = 'Criar Equipos Diários';
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        unset($data['template_id']);
+        Log::debug('Datos recibidos en create:', $data);
+        if ($data['work_date'] === '2000-01-01') {
+            $data['is_template'] = true;
+        } else {
+            $data['is_template'] = false;
+        }
         $data['created_by'] = \App\Models\Employee::where('user_id', auth()->id())->value('id');
         return $data;
     }
@@ -24,9 +30,7 @@ class CreateDailyTeam extends CreateRecord
     {
         $workDate = $this->form->getState()['work_date'] ?? now()->toDateString();
 
-        // Si necesitas lógica para asegurar Estaleiro, implementa aquí directamente o llama a un helper.
-        // Ejemplo:
-        // EstaleiroHelper::ensureEstaleiro($workDate);
+        
     }
 
     private function getNextWorkday(): string

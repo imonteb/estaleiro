@@ -27,7 +27,11 @@ use Filament\Resources\Resource;
 use Filament\Tables;
 use Filament\Tables\Table;
 use Filament\Tables\Actions\EditAction;
+use Filament\Tables\Columns\Layout\Stack;
+use Filament\Tables\Columns\Layout\View;
 use Illuminate\Support\Carbon;
+use Illuminate\Database\Eloquent\Model;
+use Filament\Notifications\Notification;
 
 class DailyTeamResource extends Resource
 {
@@ -39,12 +43,6 @@ class DailyTeamResource extends Resource
     protected static ?string $pluralLabel = 'Equipas Diárias';
     protected static ?string $title = 'Equipas Diárias';
 
-    // Para Plantillas
-    public static function getEloquentQuery(): \Illuminate\Database\Eloquent\Builder
-    {
-        return parent::getEloquentQuery()->where('is_template', true);
-    }
-
     public static function form(Form $form): Form
     {
         return $form->schema([
@@ -52,15 +50,14 @@ class DailyTeamResource extends Resource
             Forms\Components\Hidden::make('is_template')->default(true)->dehydrated(),
 
             // Si es plantilla, work_date oculto y fijo; si no, editable y default próximo día laborable
-            Forms\Components\Hidden::make('work_date')
-                ->default('2000-01-01')
-                ->dehydrated()
-                ->visible(fn($get) => $get('is_template')),
             Forms\Components\DatePicker::make('work_date')
                 ->label('Data do Trabalho')
                 ->required()
-                ->default(fn() => \App\Filament\Resources\DailyTeamResource\Pages\CreateDailyTeam::getNextWorkday())
-                ->visible(fn($get) => !$get('is_template')),
+                ->default(fn($record) => $record?->work_date ?? \App\Helpers\WorkdayHelper::getNextBusinessDay())
+                // Si es plantilla, fuerza la fecha fija
+                ->dehydrateStateUsing(fn($state, $get) => $get('is_template') ? '2000-01-01' : $state)
+                ->dehydrated(true),
+
             Section::make('Informações da Equipa')
                 ->description('Informações básicas sobre a equipa')
                 ->schema([
@@ -70,8 +67,9 @@ class DailyTeamResource extends Resource
                         ->required()
                         ->relationship('teamname', 'name')
                         ->searchable(true)
-                        ->preload()
                         ->dehydrated(true)
+                        ->disabled(fn($get) => !$get('is_template'))
+                        ->dehydrateStateUsing(fn($state, $record) => $state ?? $record?->team_name_id)
                         ->rules([
                             fn($get) => [new \App\Rules\UniqueTeamNamePerDate(
                                 $get('work_date'),
@@ -84,16 +82,12 @@ class DailyTeamResource extends Resource
                                 ->required()
                                 ->maxLength(255)
                                 ->dehydrateStateUsing(fn($state) => strtoupper($state)),
-                        ])->extraAttributes([
-                            'style' => 'font-size: 0.85em;', // o 'font-size: small;'
                         ]),
 
                     Select::make('pep_id')
                         ->relationship('pep', 'code')
                         ->label('Código PEP')
                         ->searchable(true)
-                        ->required()
-                        ->preload()
                         ->dehydrated(true)
                         ->placeholder('Seleciona o Código PEP')
                         ->createOptionForm(
@@ -112,74 +106,34 @@ class DailyTeamResource extends Resource
                                         ->required()
                                         ->default(true),
                                 ])
-                        )->extraAttributes([
-                            'style' => 'font-size: 0.85em;', // o 'font-size: small;'
-                        ]),
+                        ),
 
                     TextInput::make('work_type')
                         ->label('Tipo de Trabalho')
-                        ->dehydrated(true)
-                        ->extraAttributes([
-                            'style' => 'font-size: 0.85em;', // o 'font-size: small;'
-                        ]),
+                        ->dehydrated(true),
                     TextInput::make('location')
                         ->label('Localização')
-                        ->dehydrated(true)
-                        ->extraAttributes([
-                            'style' => 'font-size: 0.85em;', // o 'font-size: small;'
-                        ]),
+                        ->dehydrated(true),
                     //--------Lider
                     Select::make('leader_id')
                         ->label('Líder')
                         ->placeholder('Seleciona o Líder')
                         ->searchable()
-                        ->options(function (callable $get) {
-                            // work_date y teamId deben venir del contexto principal para DailyTeam
-                            $workDate = $get('work_date') ?? $get('../../work_date') ?? now();
-                            $teamId = $get('id') ?? $get('../id');
-                            $isTemplate = \App\Models\DailyTeam::find($teamId)?->is_template ?? false;
-                            return \App\Models\Employee::all()->mapWithKeys(function ($e) use ($workDate, $isTemplate, $teamId) {
-                                return [
-                                    $e->id => \App\Helpers\EmployeeAssignmentHelper::getLabelParaSelect(
-                                        $e->id,
-                                        $workDate,
-                                        $teamId,
-                                        null
-                                    ),
-                                ];
-                            })->toArray();
-                        })
+                        ->options(fn(callable $get, $record) => self::getEmployeeOptions($get, $record))
                         ->rules([
                             fn(callable $get, $record) => [
                                 new \App\Rules\EmployeeUniqueForDate(
-                                    $get('../../work_date') ?? '2000-01-01',
+                                    $get('work_date') ?? $record?->work_date,
                                     $get('id'),
                                     $record?->id
                                 ),
                             ],
                         ])
-                        ->columnSpan(2)
-                        ->extraAttributes([
-                            'style' => 'font-size: 0.85em;',
-                        ]),
+                        ->columnSpan(2),
                 ])->columns(3)
                 ->columnSpanFull()
                 ->extraAttributes([
-                    'style' => '
-                                background-color: #595fcf;
-                                font-size: small;
-                                @media (prefers-color-scheme: dark) {
-                                background-color: #333}'
-                ])->extraAttributes([
-                    'style' => '
-                                background-color: #1119ad;
-                                color: #222;
-                                font-size: small;
-                                @media (prefers-color-scheme: dark) {
-                                    background-color: #333;
-                                    color: #fff;
-                                }
-                            '
+                    'class' => 'fi-section-header-bg daily-team-section-header',
                 ]),
             //--------Membros e Veículos
             Section::make('Membros e Veículos')
@@ -187,10 +141,7 @@ class DailyTeamResource extends Resource
                 ->schema([
                     //--------Membros
                     TableRepeater::make('dailyTeamMembers')
-                        ->headers([
-                            Header::make('Membros '),
-                            Header::make('Apagar'),
-                        ])
+                        ->headers([Header::make('Membros'), Header::make('Ações')])
                         ->relationship()
                         ->label('Membros Diretos')
                         ->reactive()
@@ -201,44 +152,23 @@ class DailyTeamResource extends Resource
                                 ->required()
                                 ->dehydrated()
                                 ->searchable()
-                                ->options(function (callable $get) {
-                                    // work_date y teamId deben venir del contexto principal para DailyTeamMember
-                                    $workDate = $get('work_date') ?? $get('../../work_date') ?? now();
-                                    $teamId = $get('../../id');
-                                    $isTemplate = \App\Models\DailyTeam::find($teamId)?->is_template ?? false;
-                                    return \App\Models\Employee::all()->mapWithKeys(function ($e) use ($workDate, $isTemplate, $teamId) {
-                                        return [
-                                            $e->id => \App\Helpers\EmployeeAssignmentHelper::getLabelParaSelect(
-                                                $e->id,
-                                                $workDate,
-                                                $teamId,
-                                                null
-                                            ),
-                                        ];
-                                    })->toArray();
-                                })
+                                ->options(fn(callable $get, $record) => self::getEmployeeOptions($get, $record, '../../'))
                                 ->rules([
                                     fn(callable $get, $record) => [
                                         new \App\Rules\EmployeeUniqueForDate(
-                                            $get('../../work_date') ?? '2000-01-01',
-                                            $get('id'),
+                                            $get('../../work_date') ?? $record?->dailyTeam?->work_date,
+                                            $get('../../id') ?? $record?->daily_team_id,
                                             $record?->id
                                         ),
                                     ],
                                 ])
                                 ->live(debounce: 500)
-                                ->reactive()
-                                ->extraAttributes([
-                                    'style' => 'font-size: 0.85em;',
-                                ]),
+                                ->reactive(),
                         ])
                         ->columns(1),
 
                     TableRepeater::make('dailyTeamVehicles')
-                        ->headers([
-                            Header::make('Veiculos '),
-                            Header::make('Apagar'),
-                        ])
+                        ->headers([Header::make('Veículos'), Header::make('Ações')])
                         ->relationship()
                         ->label('Veículos Diretos')
                         ->schema([
@@ -247,50 +177,22 @@ class DailyTeamResource extends Resource
                                 ->placeholder('Seleciona o Veículo')
                                 ->required()
                                 ->searchable(true)
-                                ->options(function ($get) {
-                                    $date = $get('../../work_date') ?? now();
-                                    return \App\Models\Vehicle::all()
-                                        ->mapWithKeys(fn($v) => [
-                                            $v->id => $v->getLabelParaSelect($date),
-                                        ]);
-                                })
+                                ->options(fn(callable $get, $record) => self::getVehicleOptions($get, $record, '../../'))
                                 ->rules([
-                                    // Cambiado: Propagar correctamente la fecha de trabajo para la validación
                                     fn(callable $get, $record) => [new \App\Rules\VehicleUniqueForDate(
-                                        $get('../../work_date'), // <- subir dos niveles
-                                        $get('id'),
+                                        $get('../../work_date') ?? $record?->dailyTeam?->work_date,
+                                        $get('../../id') ?? $record?->daily_team_id,
                                         $record?->id
                                     )]
                                 ])
-                                ->dehydrated(true)
-                                ->extraAttributes([
-                                    'style' => 'font-size: 0.85em;', // o 'font-size: small;'
-                                ])
+                                ->dehydrated(true),
                         ])
-                    ->columns(1)
+                        ->columns(1)
                 ])
                 ->columns(2)
                 ->columnSpanFull()
                 ->extraAttributes([
-                    'style' => '
-                                background-color: #1119ad;
-                                color: #222;
-                                font-size: small;
-                                @media (prefers-color-scheme: dark) {
-                                    background-color: #333;
-                                    color: #fff;
-                                }
-                                '
-                ])->extraAttributes([
-                    'style' => '
-                                background-color: #1119ad;
-                                color: #222;
-                                font-size: small;
-                                @media (prefers-color-scheme: dark) {
-                                    background-color: #333;
-                                    color: #fff;
-                                }
-                                '
+                    'class' => 'fi-section-header-bg daily-team-section-header',
                 ]),
             //--------Subgrupos
             Section::make('Subgrupos')
@@ -318,76 +220,38 @@ class DailyTeamResource extends Resource
                                 ->label('Líder do Subgrupo')
                                 ->placeholder('Seleciona o Líder do Subgrupo')
                                 ->searchable()
-                                ->preload()
                                 ->dehydrated(true)
                                 ->required()
-                                ->options(function (callable $get) {
-                                    // work_date y teamId deben venir del contexto del subgrupo
-                                    $workDate = $get('work_date') ?? $get('../../work_date') ?? now();
-                                    $teamId = $get('id');
-                                    $isTemplate = \App\Models\DailyTeam::find($teamId)?->is_template ?? false;
-                                    return \App\Models\Employee::all()->mapWithKeys(function ($e) use ($workDate, $isTemplate, $teamId) {
-                                        return [
-                                            $e->id => \App\Helpers\EmployeeAssignmentHelper::getLabelParaSelect(
-                                                $e->id,
-                                                $workDate,
-                                                $teamId,
-                                                null
-                                            ),
-                                        ];
-                                    })->toArray();
-                                })
+                                ->options(fn(callable $get, $record) => self::getEmployeeOptions($get, $record, '../../'))
                                 ->rules([
                                     fn(callable $get, $record) => [
                                         new \App\Rules\EmployeeUniqueForDate(
-                                            $get('../../work_date') ?? '2000-01-01',
-                                            $get('id'),
+                                            $get('../../work_date') ?? $record?->dailyTeam?->work_date,
+                                            $get('../../id') ?? $record?->daily_team_id,
                                             $record?->id,
-                                            \App\Models\DailyTeam::find($get('../id'))?->is_template ?? false
+                                            \App\Models\DailyTeam::find($get('../../id'))?->is_template ?? false
                                         ),
                                     ],
                                 ])
                                 ->live(debounce: 500)
-                                ->reactive()
-                                ->extraAttributes([
-                                    'style' => 'font-size: 0.85em;', // o 'font-size: small;'
-                                ]),
+                                ->reactive(),
 
                             TableRepeater::make('members')
-                                ->headers([
-                                    Header::make('Membros '),
-                                    Header::make('Apagar'),
-                                ])
+                                ->headers([Header::make('Membros'), Header::make('Ações')])
                                 ->relationship()
                                 ->label('Membros do Subgrupo')
                                 ->schema([
                                     Select::make('employee_id')
                                         ->label('Colaborador*')
-                                        ->placeholder('Seleciona o Colaborador')
                                         ->searchable()
-                                        ->options(function (callable $get) {
-                                            // work_date y teamId deben venir del contexto del subgrupo
-                                            $workDate = $get('work_date') ?? $get('../../work_date') ?? now();
-                                            $teamId = $get('id');
-                                            $isTemplate = \App\Models\DailyTeam::find($teamId)?->is_template ?? false;
-                                            return \App\Models\Employee::all()->mapWithKeys(function ($e) use ($workDate, $isTemplate, $teamId) {
-                                                return [
-                                                    $e->id => \App\Helpers\EmployeeAssignmentHelper::getLabelParaSelect(
-                                                        $e->id,
-                                                        $workDate,
-                                                        $teamId,
-                                                        null
-                                                    ),
-                                                ];
-                                            })->toArray();
-                                        })
+                                        ->options(fn(callable $get, $record) => self::getEmployeeOptions($get, $record, '../../../../'))
                                         ->rules([
                                             fn(callable $get, $record) => [
                                                 new \App\Rules\EmployeeUniqueForDate(
-                                                    $get('../../work_date') ?? '2000-01-01',
-                                                    $get('id'),
+                                                    $get('../../../../work_date') ?? $record?->subTeam?->dailyTeam?->work_date,
+                                                    $get('../../../../id') ?? $record?->subTeam?->daily_team_id,
                                                     $record?->id,
-                                                    \App\Models\DailyTeam::find($get('../id'))?->is_template ?? false
+                                                    \App\Models\DailyTeam::find($get('../../../../id'))?->is_template ?? false
                                                 ),
                                             ],
                                         ])
@@ -395,46 +259,31 @@ class DailyTeamResource extends Resource
                                         ->reactive()
                                         ->dehydrated(true)
                                         ->required()
-                                        ->extraAttributes([
-                                            'style' => 'font-size: 0.85em;',
-                                        ])
                                 ])
                                 ->columns(1),
 
                             TableRepeater::make('vehicles')
-                                ->headers([
-                                    Header::make('Veiculos '),
-                                    Header::make('Apagar'),
-                                ])
+                                ->headers([Header::make('Veículos'), Header::make('Ações')])
                                 ->relationship()
                                 ->label('Veículos do Subgrupo')
                                 ->schema([
                                     Forms\Components\Hidden::make('work_date')
                                         ->default(fn($get) => $get('../../../work_date'))
                                         ->dehydrated(true),
+
                                     Select::make('vehicle_id')
                                         ->label('Veículo*')
                                         ->searchable(true)
-                                        ->placeholder('Selecionar Veículo')
-                                        ->options(function ($get) {
-                                            $date = $get('../../work_date') ?? now();
-                                            return \App\Models\Vehicle::all()
-                                                ->mapWithKeys(fn($v) => [
-                                                    $v->id => $v->getLabelParaSelect($date),
-                                                ]);
-                                        })
+                                        ->options(fn(callable $get, $record) => self::getVehicleOptions($get, $record, '../../../../'))
                                         ->rules([
                                             fn(callable $get, $record) => [new \App\Rules\VehicleUniqueForDate(
-                                                $get('../../work_date'),
-                                                $get('id'),
+                                                $get('../../../../work_date') ?? $record?->subTeam?->dailyTeam?->work_date,
+                                                $get('../../../../id') ?? $record?->subTeam?->daily_team_id,
                                                 $record?->id
                                             )]
                                         ])
                                         ->dehydrated(true)
-                                        ->required()
-                                        ->extraAttributes([
-                                            'style' => 'font-size: 0.85em;',
-                                        ]),
+                                        ->required(),
                                 ])
                                 ->columns(1)
                                 ->extraAttributes([]),
@@ -443,46 +292,112 @@ class DailyTeamResource extends Resource
                         ->collapsible(),
                 ])->columnSpanFull()
                 ->extraAttributes([
-                    'style' => '
-                                background-color: #1119ad;
-                                color: #222;
-                                font-size: small;
-                                @media (prefers-color-scheme: dark) {
-                                    background-color: #333;
-                                    color: #fff;
-                                }
-                                '
+                    'class' => 'fi-section-header-bg daily-team-section-header',
                 ]),
         ]);
-
-
     }
+
+
 
     public static function table(Table $table): Table
     {
+        $table->modifyQueryUsing(function ($query) {
+            return $query->with([
+                'dailyTeamMembers.employee',
+                'dailyTeamVehicles.vehicle',
+                'teamname',
+                'pep',
+                'leader.user',
+                'subTeams.members.employee',
+                'subTeams.vehicles.vehicle',
+                'subTeams.leader.user',
+            ]);
+        });
         return $table
             ->columns([
-                //Tables\Columns\TextColumn::make('work_date')->label('Data da Equipa'),
-                Tables\Columns\TextColumn::make('teamname.name')->label('Nome da Equipa'),
-                Tables\Columns\TextColumn::make('pep.code')->label('Código PEP'),
-                Tables\Columns\TextColumn::make('leader.user.name')->label('Líder'),
+                View::make('filament.resources.daily-teams.cards')
+            ])
+            ->contentGrid([
+                'md' => 3,
+                'xl' => 3,
             ])
             ->defaultSort('team_name_id')
             ->actions([
-                Tables\Actions\EditAction::make()->slideOver(),
+                Tables\Actions\EditAction::make()
+                    ->slideOver()
+                    ->modalWidth('7xl')
+                    ->modalHeading('Editar Equipa Diária')
+                    ->mutateFormDataUsing(function (array $data, Model $record): array {
+                        // Asegurar que tenemos los datos correctos del template
+                        if ($data['work_date'] === '2000-01-01') {
+                            $data['is_template'] = true;
+                        } else {
+                            $data['is_template'] = false;
+                        }
+                        return $data;
+                    })
+                    ->mutateRecordDataUsing(function (array $data, Model $record): array {
+                        // Cargar las relaciones necesarias para el formulario
+                        $record->load([
+                            'dailyTeamMembers.employee.user',
+                            'dailyTeamVehicles.vehicle',
+                            'subTeams.members.employee.user',
+                            'subTeams.vehicles.vehicle',
+                            'subTeams.subTeamName',
+                            'teamname',
+                            'leader.user',
+                            'pep'
+                        ]);
+                        
+                        return $data;
+                    })
+                    ->successNotificationTitle('Equipa atualizada com sucesso!')
+                    ->modalSubmitActionLabel('Guardar Alterações'),
+            ])
+            ->filters([
+                Tables\Filters\Filter::make('work_date')
+                    ->form([
+                        /* Forms\Components\Toggle::make('show_templates')
+                            ->label('Mostrar solo plantillas'), */
+                        DatePicker::make('work_date')
+                            ->label('Data do Trabalho')
+                            ->default(fn($get) => $get('show_templates') ? Carbon::create(2000, 1, 1) : \App\Models\DailyTeam::where('is_template', false)->max('work_date'))
+                            ->disabled(fn($get) => $get('show_templates')),
+                    ])
+                    /* ->query(function ($query, array $data) {
+                        if (!empty($data['show_templates'])) {
+                            $query->where('is_template', true)
+                                ->whereDate('work_date', '2000-01-01');
+                        } else {
+                            $query->where('is_template', false);
+                            if (!empty($data['work_date'])) {
+                                $query->whereDate('work_date', $data['work_date']);
+                            }
+                        }
+                    }) */
+
+                    ->query(function ($query, array $data) {
+                        $query->where('is_template', false);
+                        if (!empty($data['work_date'])) {
+                            $query->whereDate('work_date', $data['work_date']);
+                        }
+                    }),
             ])
             ->headerActions([
-                Tables\Actions\Action::make('importarPlantillasParaDia')
-                    ->label('Importar todas las plantillas para un día')
-                    ->icon('heroicon-o-arrow-down-tray')
+                Tables\Actions\CreateAction::make()
+                    ->label('Criar Equipa')
+                    ->slideOver(),
+                Tables\Actions\Action::make('importarModelosParaDia')
+                    ->label('Importar Modelos para um Dia')
+                    ->icon('heroicon-o-document-arrow-down')
                     ->form([
                         DatePicker::make('work_date')
                             ->label('Data de Trabalho')
-                            ->default(fn() => now()->addDay()->format('Y-m-d'))
+                            ->default(fn() => \App\Helpers\WorkdayHelper::getNextBusinessDay())
                             ->required(),
                     ])
                     ->action(function (array $data) {
-                        // Importar todas las plantillas como equipos diarios para la fecha seleccionada
+                        // Importar todos os modelos como equipas diárias para a data selecionada
                         $plantillas = \App\Models\DailyTeam::where('is_template', true)->get();
                         foreach ($plantillas as $record) {
                             $newTeam = $record->replicate();
@@ -501,7 +416,7 @@ class DailyTeamResource extends Resource
                                     null
                                 );
                                 if ($conflict['status'] === 'asignado') {
-                                    throw new \Exception("Veículo já atribuído ao equipa {$conflict['team_name']} em {$conflict['date']} (importação de plantilla).");
+                                    throw new \Exception("Veículo já atribuído à equipa {$conflict['team_name']} em {$conflict['date']} (importação de modelo).");
                                 }
                                 $newTeam->dailyTeamVehicles()->create(['vehicle_id' => $vehicle->vehicle_id]);
                             }
@@ -522,29 +437,28 @@ class DailyTeamResource extends Resource
                                         null
                                     );
                                     if ($conflict['status'] === 'asignado') {
-                                        throw new \Exception("Veículo já atribuído ao {$conflict['context']} {$conflict['team_name']} em {$conflict['date']} (importação de subgrupo).");
+                                        throw new \Exception("Veículo já atribuído ao {$conflict['context']} {$conflict['team_name']} em {$conflict['date']} (importação de sub-equipa).");
                                     }
                                     $subTeam->vehicles()->create(['vehicle_id' => $vehicle->vehicle_id]);
                                 }
                             }
                         }
                     }),
-                Tables\Actions\Action::make('duplicarEquiposDiaAnterior')
-                    ->label('Duplicar todos los equipos del día anterior')
+                Tables\Actions\Action::make('duplicarEquipasDiaAnterior')
+                    ->label('Duplicar Equipas do Dia Anterior')
                     ->icon('heroicon-o-document-duplicate')
                     ->form([
                         DatePicker::make('source_date')
-                            ->label('Día a duplicar')
-                            ->default(fn() => \App\Filament\Resources\DailyTeamResource\Pages\TeamCard::getLastBusinessDay())
+                            ->label('Dia a duplicar')
+                            ->default(fn() => \App\Helpers\WorkdayHelper::getLastBusinessDay())
                             ->required(),
                         DatePicker::make('target_date')
-                            ->label('Nuevo día')
-                            ->default(fn() => \App\Filament\Resources\DailyTeamResource\Pages\TeamCard::getNextBusinessDay())
+                            ->label('Novo dia')
+                            ->default(fn() => \App\Helpers\WorkdayHelper::getNextBusinessDay())
                             ->required(),
                     ])
                     ->action(function (array $data) {
-                        $equipos = \App\Models\DailyTeam::where('is_template', false)
-                            ->whereDate('work_date', $data['source_date'])
+                        $equipos = \App\Models\DailyTeam::whereDate('work_date', $data['source_date'])
                             ->get();
                         foreach ($equipos as $record) {
                             $newTeam = $record->replicate();
@@ -562,7 +476,7 @@ class DailyTeamResource extends Resource
                                     null
                                 );
                                 if ($conflict['status'] === 'asignado') {
-                                    throw new \Exception("Veículo já atribuído ao equipa {$conflict['team_name']} em {$conflict['date']} (duplicação de dia).");
+                                    throw new \Exception("Veículo já atribuído à equipa {$conflict['team_name']} em {$conflict['date']} (duplicação de dia).");
                                 }
                                 $newTeam->dailyTeamVehicles()->create(['vehicle_id' => $vehicle->vehicle_id]);
                             }
@@ -583,14 +497,35 @@ class DailyTeamResource extends Resource
                                         null
                                     );
                                     if ($conflict['status'] === 'asignado') {
-                                        throw new \Exception("Veículo já atribuído ao {$conflict['context']} {$conflict['team_name']} em {$conflict['date']} (duplicação de subgrupo).");
+                                        throw new \Exception("Veículo já atribuído ao {$conflict['context']} {$conflict['team_name']} em {$conflict['date']} (duplicação de sub-equipa).");
                                     }
                                     $subTeam->vehicles()->create(['vehicle_id' => $vehicle->vehicle_id]);
                                 }
                             }
                         }
                     }),
+                Tables\Actions\Action::make('publicarDia')
+                    ->label('Publicar Dia de Trabalho')
+                    ->icon('heroicon-o-check')
+                    ->form([
+                        DatePicker::make('work_date')
+                            ->label('Data do Trabalho')
+                            ->default(fn() => \App\Models\DailyTeam::where('is_template', false)->max('work_date'))
+                            ->required(),
+                    ])
+                    ->action(function (array $data) {
+                        \App\Models\PublishedOperationsDay::firstOrCreate([
+                            'date' => $data['work_date'],
+                        ]);
+                        Notification::make()
+                            ->title('Dia publicado!')
+                            ->success()
+                            ->send();
+                    })
+                    ->requiresConfirmation()
+                    ->color('success'),
             ])
+
             ->bulkActions([
                 Tables\Actions\BulkActionGroup::make([
                     Tables\Actions\DeleteBulkAction::make(),
@@ -603,33 +538,64 @@ class DailyTeamResource extends Resource
         return [
             'index' => Pages\ListDailyTeams::route('/'),
             'create' => Pages\CreateDailyTeam::route('/create'),
-            //'edit' => Pages\EditDailyTeam::route('/{record}/edit'),
-            'team-card' => Pages\TeamCard::route('/team-card'),
         ];
     }
 
-    public static function getNavigationItems(): array
+    /**
+     * Gera as opções para os selects de colaboradores com o seu estado.
+     */
+    private static function getEmployeeOptions(callable $get, $record, string $pathPrefix = ''): array
     {
-        return [
-            NavigationItem::make()
-                ->label('Cards de Equipas Diárias')
-                ->icon('heroicon-o-rectangle-stack')
-                ->url(static::getUrl('team-card'))
-                ->group('Gestão de Equipas'),
+        static $employeeCache = [];
 
-            NavigationItem::make()
-                ->label('Plantillas de Equipas')
-                ->icon('heroicon-o-clipboard-document-list')
-                ->url(static::getUrl('index')) // Plantillas
-                ->group('Gestão de Equipas'),
+        $workDate = $get($pathPrefix . 'work_date') ?? $record?->dailyTeam?->work_date ?? now();
+        $teamId = $get($pathPrefix . 'id') ?? $record?->daily_team_id;
+        $excludeMemberId = $record?->id ?? null;
 
+        $cacheKey = md5($workDate . '_' . $teamId . '_' . $excludeMemberId);
 
-        ];
+        if (!isset($employeeCache[$cacheKey])) {
+            $employeeCache[$cacheKey] = Employee::all()->mapWithKeys(function ($employee) use ($workDate, $teamId, $excludeMemberId) {
+                return [
+                    $employee->id => EmployeeAssignmentHelper::getLabelParaSelect(
+                        $employee->id,
+                        $workDate,
+                        $teamId,
+                        $excludeMemberId
+                    ),
+                ];
+            })->toArray();
+        }
+
+        return $employeeCache[$cacheKey];
+    }
+
+    /**
+     * Gera as opções para os selects de veículos com o seu estado.
+     */
+    private static function getVehicleOptions(callable $get, $record, string $pathPrefix = ''): array
+    {
+        static $vehicleCache = [];
+
+        $date = $get($pathPrefix . 'work_date') ?? $record?->dailyTeam?->work_date ?? $record?->subTeam?->dailyTeam?->work_date ?? now();
+        $teamId = $get($pathPrefix . 'id') ?? $record?->daily_team_id ?? $record?->subTeam?->daily_team_id;
+        $excludeVehicleId = $record?->id ?? null;
+        $isTemplate = \App\Models\DailyTeam::find($teamId)?->is_template ?? false;
+
+        $cacheKey = md5($date . '_' . $teamId . '_' . $excludeVehicleId . '_' . $isTemplate);
+
+        if (!isset($vehicleCache[$cacheKey])) {
+            $vehicleCache[$cacheKey] = Vehicle::get()->mapWithKeys(fn($v) => [
+                $v->id => VehicleAssignmentHelper::getLabelParaSelect($v->id, $date, $teamId, $excludeVehicleId, $isTemplate),
+            ])->toArray();
+        }
+
+        return $vehicleCache[$cacheKey];
     }
 
     public static function getNavigationBadge(): ?string
     {
-        return static::getModel()::where('is_template', true)->count();
+        return static::getModel()::where('is_template', false)->count();
     }
 
     public static function getNavigationBadgeColor(): ?string

@@ -60,7 +60,6 @@ class DailyTeamMember extends Model
     protected static function booted(): void
     {
         static::saving(function ($item) {
-
             $date = $item->dailyTeam->work_date instanceof Carbon
                 ? $item->dailyTeam->work_date
                 : Carbon::parse($item->dailyTeam->work_date);
@@ -75,15 +74,21 @@ class DailyTeamMember extends Model
                     'employee_id' => 'Este colaborador não está disponível nessa data (' . $motivo . ').',
                 ]);
             }
-            // Si está asignado, permitir si es el mismo equipo (update)
+            
+            // Si está asignado, permitir si es el mismo miembro que se está editando
             if ($badge['status'] === 'asignado') {
-                if ($item->daily_team_id && isset($badge['equipo']) && isset($badge['rol'])) {
+                if ($item->exists && isset($badge['member_id']) && $badge['member_id'] == $item->id) {
+                    return;
+                }
+                
+                if ($item->daily_team_id && isset($badge['equipo']) && isset($badge['role'])) {
                     $equipo = $item->dailyTeam;
                     // Permitir si es el mismo equipo y el mismo rol
                     if ($equipo && $equipo->id == $item->daily_team_id) {
                         return;
                     }
                 }
+                
                 throw ValidationException::withMessages([
                     'employee_id' => 'Este colaborador já está atribuído a outro grupo nessa data.',
                 ]);
@@ -107,6 +112,4 @@ class DailyTeamMember extends Model
             }
         });
     }
-
-
 }

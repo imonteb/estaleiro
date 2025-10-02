@@ -30,9 +30,9 @@ class VehicleUniqueForDate implements ValidationRule
 
         if ($status['status'] === 'indisponivel') {
             $fail("Este veículo está indisponível: {$status['motivo']} em {$status['date']}.");
-        } elseif ($status['status'] === 'asignado' && empty($status['same_team'])) {
-            $context = $status['context'] === 'subgrupo' ? 'subgrupo' : 'equipo';
-            $fail("Este veículo já está atribuído ao $context {$status['team_name']} em {$status['date']}.");
+        } elseif ($status['status'] === 'atribuido' && empty($status['same_team'])) {
+            $context = $status['context'] === 'subgrupo' ? 'sub-equipa' : 'equipa';
+            $fail("Este veículo já está atribuído à {$context} {$status['team_name']} em {$status['date']}.");
         }
     }
 }

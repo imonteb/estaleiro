@@ -17,14 +17,14 @@ new class extends Component
 }; ?>
 
 <div>
-    <nav x-data="{ open: false }" class="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
+    <nav x-data="{ open: false }" class="bg-gray-300 dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
         <!-- Primary Navigation Menu -->
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div class="flex justify-between h-16">
                 <div class="flex">
                     <!-- Logo -->
                     <div class="shrink-0 flex items-center">
-                        <a href="{{ route('dashboard') }}" wire:navigate>
+                        <a href="{{ route('home') }}" wire:navigate>
                             <x-application-logo
                                 class="block h-9 w-auto fill-current text-gray-800 dark:text-gray-200" />
                         </a>
@@ -98,17 +98,7 @@ new class extends Component
                                             Criar modelos
                                         </a>
                                     </li>
-                                     {{-- <li>
-                                        <a href="{{ route('equipas.publish-day') }}"
-                                            class="flex items-center gap-2 px-4 py-2 hover:bg-gray-100 dark:hover:bg-gray-600">
-                                            <svg class="h-4 w-4 text-yellow-700" fill="none" stroke="currentColor"
-                                                stroke-width="2" viewBox="0 0 24 24">
-                                                <path
-                                                    d="M17 21v-2a4 4 0 00-3-3.87V13a4 4 0 10-8 0v2.13A4 4 0 003 19v2" />
-                                            </svg>
-                                            Publicar tarefas diárias
-                                        </a>
-                                    </li> --}}
+
                                 </ul>
                             </div>
                         </div>
@@ -178,7 +168,7 @@ new class extends Component
                         viewBox="0 0 24 24">
                         <path d="M3 12l2-2m0 0l7-7 7 7M13 5v6h6v8a2 2 0 01-2 2H7a2 2 0 01-2-2v-8h6V5z" />
                     </svg>
-                        <span>Painel</span>
+                    <span>Painel</span>
                 </a>
                 @role('admin')
                 <div x-data="{ open: false }" class="relative">

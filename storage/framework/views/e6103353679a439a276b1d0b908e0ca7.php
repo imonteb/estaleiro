@@ -10,9 +10,7 @@
             <div
                 class="mt-4 ml-2 me-2 justify-between rounded-lg border border-blue-900 shadow-xl hover:shadow-2xl shadow-blue-900 min-h-60 p-4 transition h-full bg-white relative">
                 <!-- Botón editar -->
-                <button
-                    class="absolute top-2 right-2 bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-1 rounded text-xs shadow"
-                    wire:click="openSlideover(<?php echo e($team->id); ?>)">Editar</button>
+                
                 <!-- Cabecera azul -->
                 <div class="grid grid-cols-4 bg-blue-900 rounded-t-md text-white p-2">
                     <div class="col-span-2 text-left border-b">

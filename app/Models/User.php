@@ -13,8 +13,11 @@ use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Support\Str;
+use Filament\Panel;
 
-class User extends Authenticatable
+
+
+class User extends Authenticatable  implements FilamentUser
 {
     use HasRoles, HasPanelShield;
     use HasApiTokens, HasFactory, Notifiable;
@@ -59,7 +62,6 @@ class User extends Authenticatable
         // return true;
     }
     
-
     /**
      * Get the user's initials
      */
